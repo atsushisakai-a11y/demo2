@@ -2,6 +2,8 @@ name: demo2
 version: 1.0.0
 config-version: 2
 
+profile: demo2
+
 model-paths: ["models"]
 
 models:
