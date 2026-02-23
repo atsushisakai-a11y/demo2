@@ -1,0 +1,11 @@
+name: demo2
+version: 1.0.0
+config-version: 2
+
+model-paths: ["models"]
+
+models:
+  demo2:
+    staging:
+      +schema: staging
+      +materialized: table
