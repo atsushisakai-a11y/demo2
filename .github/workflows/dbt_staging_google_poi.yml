@@ -1,4 +1,4 @@
-name: staging - test_google_poi
+name: Staging - test_google_poi
 
 on:
   workflow_dispatch:
