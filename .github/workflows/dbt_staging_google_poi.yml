@@ -1,4 +1,4 @@
-name: dbt - build staging_test_google_poi
+name: staging - test_google_poi
 
 on:
   workflow_dispatch:
