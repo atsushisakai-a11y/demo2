@@ -52,7 +52,7 @@ jobs:
                 dataset: staging
                 keyfile: sa.json
                 threads: 4
-                location: EU
+                location: europe-west4
           EOF
 
       - name: Run dbt model (staging_test_google_poi)
