@@ -10,4 +10,4 @@ models:
   demo2:
     staging:
       +schema: staging
-      +materialized: table
+      +tags: ["staging"]
