@@ -1,4 +1,4 @@
-{{ config(materialized='table', schema='staging', alias='staging_test_google_poi') }}
+{{ config(materialized='table', alias='staging_test_google_poi') }}
 
 SELECT
   raw.place_id,
