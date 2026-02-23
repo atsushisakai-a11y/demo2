@@ -29,7 +29,7 @@ jobs:
       # 👇 NEW STEP: Download JSON from GCS
       - name: Download POI JSON from GCS
         run: |
-          gcloud storage cp gs://eneco/google_poi_json.json google_poi_json.json
+          gcloud storage cp gs://eneco_ingestion/google_poi_json.json
           ls -lh google_poi_json.json          
 
       - name: Run ETL to BigQuery
