@@ -27,10 +27,10 @@ jobs:
           pip install -r requirements.txt
 
       # 👇 NEW STEP: Download JSON from GCS
-      - name: Download POI JSON
+      - name: Download POI JSON from GCS
         run: |
-          curl -o google_poi_json.json \
-          https://storage.googleapis.com/eneco/google_poi_json.json
+          gcloud storage cp gs://eneco/google_poi_json.json google_poi_json.json
+          ls -lh google_poi_json.json          
 
       - name: Run ETL to BigQuery
         env:
