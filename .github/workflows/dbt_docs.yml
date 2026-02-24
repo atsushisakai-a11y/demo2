@@ -61,12 +61,15 @@ jobs:
                 location: europe-west4
           EOF
 
-      - name: Generate dbt docs
+      - name: Build models + run tests + generate docs
         env:
           DBT_PROFILES_DIR: .dbt
         run: |
+          dbt deps
           dbt debug
-          dbt docs generate
+          dbt run
+          dbt test
+          dbt docs generate          
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
