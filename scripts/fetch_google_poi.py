@@ -1,5 +1,6 @@
 import os
 import time
+import json
 import hashlib
 from datetime import datetime, timezone
 from typing import Any, Dict, List
@@ -13,7 +14,7 @@ from google.api_core.exceptions import NotFound
 # =========================
 PROJECT_ID = "eneco-488308"
 DATASET_ID = "raw"
-TABLE_NAME = "google_poi"
+TABLE_NAME = "raw_google_poi"
 LOCATION = "Rotterdam, Netherlands"
 
 KEYWORDS = [
@@ -28,13 +29,14 @@ KEYWORDS = [
     "ICT repair shop",
 ]
 
-# ✅ API key is read from environment variable (GitHub Secrets / local export)
+# ====== TEST LIMITS (cost control) ======
+MAX_API_CALLS_TOTAL = 10          # ✅ hard cap on Places requests
+MAX_RESULTS_PER_KEYWORD = 10      # optional: keep inserts small too
+SLEEP_BETWEEN_CALLS_SEC = 0.2
+
 API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY")
 if not API_KEY:
-    raise RuntimeError(
-        "Missing GOOGLE_MAPS_API_KEY env var. "
-        "Set it locally with export GOOGLE_MAPS_API_KEY='...' or via GitHub Secrets."
-    )
+    raise RuntimeError("Missing GOOGLE_MAPS_API_KEY env var (use GitHub Secrets/env).")
 
 TEXTSEARCH_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
 
@@ -48,39 +50,27 @@ def stable_row_id(location: str, keyword: str, place_id: str) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def fetch_places_text_search(query: str, max_pages: int = 3) -> List[Dict[str, Any]]:
+def fetch_places_text_search_single_call(query: str) -> List[Dict[str, Any]]:
     """
-    Places Text Search (Legacy). Supports free-text queries like:
-    "bakery in Rotterdam, Netherlands"
-    Handles next_page_token pagination.
+    One single Text Search call. No pagination (keeps cost predictable).
     """
-    all_results: List[Dict[str, Any]] = []
     params = {"query": query, "key": API_KEY}
+    resp = requests.get(TEXTSEARCH_URL, params=params, timeout=30)
+    resp.raise_for_status()
+    payload = resp.json()
 
-    next_token = None
-    for _ in range(max_pages):
-        if next_token:
-            # token becomes valid after short delay
-            time.sleep(2)
-            params = {"pagetoken": next_token, "key": API_KEY}
+    status = payload.get("status")
+    if status not in ("OK", "ZERO_RESULTS"):
+        raise RuntimeError(f"Places API error: status={status}, payload={payload}")
 
-        resp = requests.get(TEXTSEARCH_URL, params=params, timeout=30)
-        resp.raise_for_status()
-        payload = resp.json()
-
-        status = payload.get("status")
-        if status not in ("OK", "ZERO_RESULTS"):
-            raise RuntimeError(f"Places API error: status={status}, payload={payload}")
-
-        all_results.extend(payload.get("results", []))
-        next_token = payload.get("next_page_token")
-        if not next_token:
-            break
-
-    return all_results
+    return payload.get("results", [])
 
 
 def ensure_bq_table(client: bigquery.Client, table_fqdn: str) -> None:
+    """
+    TEST schema: store raw payload as STRING (raw_json) to avoid JSON/RECORD mismatch.
+    If your table already exists with different schema, we do NOT try to alter it here.
+    """
     schema = [
         bigquery.SchemaField("fetched_at", "TIMESTAMP", mode="REQUIRED"),
         bigquery.SchemaField("location", "STRING", mode="REQUIRED"),
@@ -97,7 +87,8 @@ def ensure_bq_table(client: bigquery.Client, table_fqdn: str) -> None:
         bigquery.SchemaField("price_level", "INTEGER"),
         bigquery.SchemaField("lat", "FLOAT"),
         bigquery.SchemaField("lng", "FLOAT"),
-        bigquery.SchemaField("raw", "JSON"),
+
+        bigquery.SchemaField("raw_json", "STRING"),  # ✅ safe for test
     ]
 
     try:
@@ -118,7 +109,7 @@ def to_bq_rows(location: str, keyword: str, places: List[Dict[str, Any]]) -> Lis
     fetched_at = now_utc_iso()
     rows: List[Dict[str, Any]] = []
 
-    for p in places:
+    for p in places[:MAX_RESULTS_PER_KEYWORD]:
         place_id = p.get("place_id")
         if not place_id:
             continue
@@ -144,7 +135,9 @@ def to_bq_rows(location: str, keyword: str, places: List[Dict[str, Any]]) -> Lis
                 "price_level": p.get("price_level"),
                 "lat": lat,
                 "lng": lng,
-                "raw": p,
+
+                # store raw as JSON string to avoid BigQuery type mismatch
+                "raw_json": json.dumps(p, ensure_ascii=False),
             }
         )
 
@@ -156,7 +149,8 @@ def insert_rows(client: bigquery.Client, table_fqdn: str, rows: List[Dict[str, A
         return
     errors = client.insert_rows_json(table_fqdn, rows)
     if errors:
-        raise RuntimeError(f"BigQuery insert errors: {errors}")
+        # show only first few errors to keep logs readable
+        raise RuntimeError(f"BigQuery insert errors (sample): {errors[:3]}")
 
 
 def main() -> None:
@@ -164,20 +158,27 @@ def main() -> None:
     table_fqdn = f"{PROJECT_ID}.{DATASET_ID}.{TABLE_NAME}"
     ensure_bq_table(bq, table_fqdn)
 
-    total = 0
+    api_calls = 0
+    total_inserted = 0
+
     for kw in KEYWORDS:
+        if api_calls >= MAX_API_CALLS_TOTAL:
+            print(f"[STOP] Reached MAX_API_CALLS_TOTAL={MAX_API_CALLS_TOTAL}")
+            break
+
         query = f"{kw} in {LOCATION}"
-        places = fetch_places_text_search(query=query, max_pages=3)
+        places = fetch_places_text_search_single_call(query=query)
+        api_calls += 1
+
         rows = to_bq_rows(location=LOCATION, keyword=kw, places=places)
         insert_rows(bq, table_fqdn, rows)
 
-        print(f"[OK] {kw}: fetched={len(places)} inserted={len(rows)}")
-        total += len(rows)
+        print(f"[OK] call#{api_calls} keyword='{kw}' fetched={len(places)} inserted={len(rows)}")
+        total_inserted += len(rows)
 
-        # small pause to reduce quota spikes
-        time.sleep(0.3)
+        time.sleep(SLEEP_BETWEEN_CALLS_SEC)
 
-    print(f"Done. Total inserted rows: {total}")
+    print(f"Done. API calls: {api_calls}, total inserted rows: {total_inserted}")
 
 
 if __name__ == "__main__":
