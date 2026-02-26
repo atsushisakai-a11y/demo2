@@ -19,3 +19,6 @@ CREATE TABLE `eneco-488308.raw.raw_google_poi` (
 
   raw_json STRING
 );
+
+ALTER TABLE `eneco-488308.raw.raw_google_poi`
+ADD COLUMN google_maps_url STRING;
