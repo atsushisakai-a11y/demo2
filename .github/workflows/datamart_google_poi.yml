@@ -62,4 +62,4 @@ jobs:
           DBT_PROFILES_DIR: .dbt
         run: |
           dbt debug
-          dbt run --select datamart_google_poi
+          dbt run --select datamart_google_poi datamart_smb_opportunity_score
