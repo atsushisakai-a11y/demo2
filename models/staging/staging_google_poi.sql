@@ -6,6 +6,7 @@ SELECT
   raw.formatted_address as address,
   raw.lat,
   raw.lng,
+  raw.types[SAFE_OFFSET(0)] as primary_type,
   IFNULL(raw.rating, 0) AS rating,
   IFNULL(raw.user_ratings_total, 0) AS user_ratings_total,
   raw.google_maps_url,
