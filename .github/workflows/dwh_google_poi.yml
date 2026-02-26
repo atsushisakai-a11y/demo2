@@ -62,4 +62,4 @@ jobs:
           DBT_PROFILES_DIR: .dbt
         run: |
           dbt debug
-          dbt run --select dim_google_poi fact_google_poi fact_smb_opportunity_score.sql
+          dbt run --select dim_google_poi fact_google_poi fact_smb_opportunity_score
