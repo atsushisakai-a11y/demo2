@@ -1,0 +1,17 @@
+version: 2
+
+sources:
+  - name: raw
+    database: eneco-488308
+    schema: raw
+    tables:
+      - name: raw_google_poi
+        description: |
+          Google Places POI raw ingestion table populated by Python/GitHub Actions.
+
+          DDL reference (not executed by dbt): `sql/ddl/raw_google_poi.sql`
+        columns:
+          - name: place_id
+            description: Google Places place_id
+            tests:
+              - not_null
