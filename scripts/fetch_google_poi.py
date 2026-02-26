@@ -30,13 +30,14 @@ KEYWORDS = [
     "ICT repair shop",
 ]
 
+# Rotterdam bounding box (approx)
 ROTTERDAM_BBOX = {"min_lat": 51.87, "max_lat": 52.02, "min_lng": 4.35, "max_lng": 4.60}
 RADIUS_M = 2000
 GRID_STEP_M = int(RADIUS_M * 0.8)
 MAX_PAGES_PER_TILE = 3
 
-# Cost control
-MAX_API_CALLS_TOTAL = 99999 #10
+# Cost control (set high when you want full Rotterdam)
+MAX_API_CALLS_TOTAL = 10
 api_call_counter = 0
 
 # BigQuery inserts
@@ -62,6 +63,11 @@ def now_utc_iso() -> str:
 def stable_row_id(location: str, keyword: str, place_id: str) -> str:
     raw = f"{location}||{keyword}||{place_id}".encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
+
+
+def build_google_maps_url(place_id: str) -> str:
+    # Stable deep link for a place_id
+    return f"https://www.google.com/maps/place/?q=place_id:{place_id}"
 
 
 def meters_to_lat_deg(m: float) -> float:
@@ -99,7 +105,7 @@ def _safe_params(params: Dict[str, Any]) -> Dict[str, Any]:
 def http_get_with_retry(url: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Counts every real HTTP request towards MAX_API_CALLS_TOTAL.
-    Retries transient errors.
+    Retries transient errors (500/502/503/504) + network timeouts.
     """
     global api_call_counter
 
@@ -170,7 +176,10 @@ def fetch_nearby_all_pages(lat: float, lng: float, keyword: str) -> List[Dict[st
         all_results.extend(results)
         next_token = payload.get("next_page_token")
 
-        print(f"[FETCH] tile=({lat},{lng}) keyword='{keyword}' page={page+1} status={status} results={len(results)} total_tile_results={len(all_results)}")
+        print(
+            f"[FETCH] tile=({lat},{lng}) keyword='{keyword}' page={page+1} "
+            f"status={status} results={len(results)} total_tile_results={len(all_results)}"
+        )
 
         if not next_token:
             break
@@ -186,6 +195,7 @@ def to_bq_rows(location: str, keyword: str, places: List[Dict[str, Any]]) -> Lis
         place_id = p.get("place_id")
         if not place_id:
             continue
+
         geom = (p.get("geometry") or {}).get("location") or {}
 
         rows.append(
@@ -196,6 +206,8 @@ def to_bq_rows(location: str, keyword: str, places: List[Dict[str, Any]]) -> Lis
                 "row_id": stable_row_id(location, keyword, place_id),
 
                 "place_id": place_id,
+                "google_maps_url": build_google_maps_url(place_id),
+
                 "name": p.get("name"),
                 "formatted_address": p.get("vicinity"),
                 "business_status": p.get("business_status"),
@@ -235,7 +247,6 @@ def insert_rows_batched_with_logs(
         errors = client.insert_rows_json(table_fqdn, chunk)
 
         if errors:
-            # errors returns per-row issues; count success as chunk - error_count
             error_count = len(errors)
             ok_count = len(chunk) - error_count
             inserted += max(ok_count, 0)
