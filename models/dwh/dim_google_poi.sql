@@ -4,6 +4,7 @@ SELECT
   s.place_id,
   s.name,
   s.address,
+  s.primary_type,
   s.lat,
   s.lng,
   s.google_maps_url
