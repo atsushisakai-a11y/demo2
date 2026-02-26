@@ -1,7 +1,7 @@
 version: 2
 
 models:
-  - name: dim_test_google_poi
+  - name: dim_google_poi
     description: "POI dimension table (one row per place_id)."
     columns:
       - name: place_id
@@ -10,7 +10,7 @@ models:
           - not_null
           - unique
 
-  - name: fact_test_google_poi
+  - name: fact_google_poi
     description: "POI fact table (metrics captured at fetched_at)."
     columns:
       - name: place_id
@@ -18,5 +18,5 @@ models:
         tests:
           - not_null
           - relationships:
-              to: ref('dim_test_google_poi')
+              to: ref('dim_google_poi')
               field: place_id
