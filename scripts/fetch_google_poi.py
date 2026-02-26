@@ -37,7 +37,7 @@ GRID_STEP_M = int(RADIUS_M * 0.8)
 MAX_PAGES_PER_TILE = 3
 
 # Cost control (set high when you want full Rotterdam)
-MAX_API_CALLS_TOTAL = 10
+MAX_API_CALLS_TOTAL = 9999 #10
 api_call_counter = 0
 
 # BigQuery inserts
